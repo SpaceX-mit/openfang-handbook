@@ -34,6 +34,8 @@
 | [hands.md](hands.md) | Hands 自主能力包 |
 | [extensions.md](extensions.md) | Extensions 一键集成系统 |
 | [security.md](security.md) | 安全模型：能力、审计、污点追踪 |
+| [prompt-injection.md](prompt-injection.md) | 提示注入防护实现分析（含死代码发现） |
+| [agent-security-deep-dive.md](agent-security-deep-dive.md) | 40 项 AgentOS 安全要求对比与 Gap |
 | [config.md](config.md) | 配置文件完整字段参考 |
 
 ## 快速定位

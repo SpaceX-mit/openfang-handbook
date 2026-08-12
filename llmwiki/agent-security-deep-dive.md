@@ -408,8 +408,8 @@ pub fn hash_manifest(toml_content: &str) -> String {
 | S1.3 | 子 Agent 权限非升级 | NIST AI RMF | `spawn_agent_checked` 验证子集关系 | ✅ 已达成 | — |
 | S1.4 | 运行时能力撤销 | NIST AI RMF | 仅 `revoke_all`，无法撤销单个能力 | ⚠️ 部分 | 只能全量撤销，不支持细粒度运行时撤销 |
 | S2.1 | 直接提示注入防护 | OWASP LLM01 | `phantom_action_detected` 幽灵动作检测，taint UserInput 标签 | ⚠️ 部分 | 无系统性 prompt injection 扫描，仅检测副作用缺失 |
-| S2.2 | 间接提示注入防护 | OWASP LLM01 | taint ExternalNetwork 阻断 shell_exec/agent_message | ⚠️ 部分 | 实际传播追踪不完整：LLM 输出本身未打 taint 标签就流入后续工具 |
-| S2.3 | 恶意指令检测（技能内容） | OWASP LLM05 | `verify.rs` 扫描 override 指令 | ✅ 已达成 | — |
+| S2.2 | 间接提示注入防护 | OWASP LLM01 | taint 框架存在，但标签在检查点**硬编码构造**，`merge_taint`/`declassify` 生产零调用 | ⚠️ 部分 | 无真实污点传播：web_fetch 结果不带标签即进入上下文。见 [prompt-injection.md](prompt-injection.md) Gap-1 |
+| S2.3 | 恶意指令检测（技能内容） | OWASP LLM05 | `verify.rs::scan_prompt_content` 已接线 4 处，Critical 级**删目录 + SecurityBlocked 阻断安装** | ✅ 已达成 | 针对 ClawHub 341 个恶意技能事件（2026-02）的响应 |
 | S3.1 | 工具调用白名单/黑名单 | OWASP LLM08 | deny-wins + glob + 命名组，deny 优先于 allow | ✅ 已达成 | — |
 | S3.2 | 危险工具人工审批 | OWASP LLM08 | `ApprovalManager`，oneshot channel 阻塞等待，超时自动拒绝 | ✅ 已达成 | — |
 | S3.3 | 子 Agent 工具限制（深度感知） | OWASP LLM08 | `filter_tools_by_depth`，SUBAGENT_DENY_ALWAYS 列表 | ✅ 已达成 | — |
@@ -419,7 +419,7 @@ pub fn hash_manifest(toml_content: &str) -> String {
 | S4.3 | Shell 命令注入防护 | OWASP LLM02 | `contains_shell_metacharacters` + taint 双重检查 | ✅ 已达成 | — |
 | S4.4 | Secret 内存零化 | NIST AI RMF | `Zeroizing<String>` 全局 API key 字段 | ✅ 已达成 | — |
 | S4.5 | 路径穿越防护 | NIST AI RMF | `safe_resolve_path()` 所有文件工具 | ✅ 已达成 | — |
-| S4.6 | Shell Bleed（脚本变量泄露） | OWASP LLM06 | `shell_bleed.rs` 扫描脚本变量引用 | ⚠️ 部分 | 仅产生 Warning，不阻断执行 |
+| S4.6 | Shell Bleed（脚本变量泄露） | OWASP LLM06 | `shell_bleed.rs` 有 296 行完整实现，但**零调用点（死代码）** | ❌ Gap | 见 [prompt-injection.md](prompt-injection.md) Gap-2。函数与测试俱在，未在 `tool_runner.rs` 接线 |
 | S5.1 | 代码执行沙箱（WASM） | NIST AI RMF | wasmtime fuel + epoch 双重计量 | ✅ 已达成 | — |
 | S5.2 | 代码执行沙箱（子进程） | NIST AI RMF | `env_clear()` + 受限 PATH | ✅ 已达成 | — |
 | S5.3 | 代码执行沙箱（容器） | NIST AI RMF | Docker 沙箱（可选，默认关闭） | ⚠️ 部分 | 需手动启用，默认不隔离 |
@@ -536,15 +536,19 @@ fn redact_secrets(text: String) -> String {
 | S1. 访问控制 | 4 | 3 | 1 | 0 | 87.5% |
 | S2. 提示注入防护 | 3 | 1 | 2 | 0 | 50% |
 | S3. 工具执行控制 | 4 | 4 | 0 | 0 | 100% |
-| S4. 数据流安全 | 6 | 4 | 1 | 1 | 75% |
+| S4. 数据流安全 | 6 | 4 | 0 | 2 | 66.7% |
 | S5. 运行时隔离 | 5 | 3 | 2 | 0 | 70% |
 | S6. 审计可观测性 | 5 | 3 | 1 | 1 | 70% |
 | S7. 网络协议安全 | 5 | 4 | 0 | 1 | 80% |
 | S8. 供应链安全 | 4 | 2 | 1 | 1 | 62.5% |
 | S9. 高级防护 | 4 | 0 | 1 | 3 | 12.5% |
-| **总计** | **40** | **24** | **9** | **7** | **71.3%** |
+| **总计** | **40** | **24** | **8** | **8** | **70.0%** |
 
-**量化评价**：在40项行业安全要求中，OpenFang 完整达成 24 项（60%），部分达成 9 项（22.5%），有 7 个明确 Gap（17.5%）。
+**量化评价**：在40项行业安全要求中，OpenFang 完整达成 24 项（60%），部分达成 8 项（20%），有 8 个明确 Gap（20%）。
+
+> **修订记录（2026-08-07）**：初版将 S4.6（Shell Bleed）评为 ⚠️ 部分达成，依据是函数文档注释里的 "warnings are prepended to the tool result"。后续在 [prompt-injection.md](prompt-injection.md) 中逐一核实调用点，发现 `scan_script_for_shell_bleed()` 在整个代码库中零调用（仅有模块声明和自身单元测试），实为死代码，故下调为 ❌ Gap。S4 完成度由 75% 修正为 66.7%，总计由 71.3% 修正为 70.0%。
+>
+> 方法论教训：只读函数定义和文档注释会高估防护能力，必须 grep 实际调用点。
 
 ---
 
