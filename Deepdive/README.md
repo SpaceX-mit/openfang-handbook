@@ -28,7 +28,7 @@ goal 文档要求 20 份文档、28 张 Mermaid、20 个 ADR、30 条 Lessons、
 | 76-77 Lessons / ADR | ✅ 完成 | `openfang-adr-lessons.md` |
 | 20-23 Runtime / Loop / LLM | ⚠️ 已在 llmwiki 覆盖 | `../llmwiki/runtime.md`、`llm-drivers.md` |
 | 24-25 Hands / Hand vs Agent | ✅ 完成 | `openfang-hands-workflow.md` §1-5 |
-| 27 Workflow Engine | ⚠️ 部分（编排表达力未核实） | `openfang-hands-workflow.md` §6-7 |
+| 27 Workflow Engine / vs LangGraph | ✅ 完成 | `openfang-hands-workflow.md` §4 |
 | 29-33 OFP / A2A / MCP / Skill / Channel | ⚠️ 已在 llmwiki 覆盖 | `../llmwiki/wire-protocol.md` 等 |
 | 34-37 API / CLI / Daemon | ⚠️ 部分（API 已覆盖） | `../llmwiki/api.md` |
 | 59-64 竞品对比 | ❌ 未做 | 需要读 OpenHands/OpenClaw 源码，本仓库没有 |
@@ -36,7 +36,7 @@ goal 文档要求 20 份文档、28 张 Mermaid、20 个 ADR、30 条 Lessons、
 | 86 Test 分析 | ✅ 完成 | `openfang-test-analysis.md` |
 | 87 Benchmark | ❌ 未做 | 需实机运行，无硬件 |
 | 88 Code Quality | ✅ 完成 | `openfang-code-quality.md` |
-| 82 Mermaid 图集 | ⚠️ 27/28 | `openfang-diagrams.md`（15 张）+ 其他文档 12 张 |
+| 82 Mermaid 图集 | ✅ 28/28 | `openfang-diagrams.md`（16 张）+ 其他文档 12 张 |
 
 **未做的部分为什么不做**：竞品对比（59-64）需要 OpenHands、OpenClaw、Hermes、ZeroClaw、LangGraph
 的源码，这些不在当前仓库内，无法遵守"源码优先"原则；凭 README 对比会违反 goal §2 的第一原则。

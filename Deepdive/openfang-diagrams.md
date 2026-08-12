@@ -470,6 +470,77 @@ graph TB
 
 ---
 
+## D-16 Channel 路由解析层级
+
+> 依据：`channels/src/router.rs` 的 20 个 pub fn（双方法核实计数与名称）
+> 及 [../llmwiki/channels.md](../llmwiki/channels.md) 的路由模型
+
+```mermaid
+graph TB
+    MSG["入站消息<br/>(channel, channel_id, user, peer)"]
+
+    subgraph RESOLVE["ChannelRouter 解析入口（3 个变体）"]
+        R1["resolve()<br/>:145"]
+        R2["resolve_with_channel_id()<br/>:157"]
+        R3["resolve_with_context()<br/>:208"]
+    end
+
+    subgraph TIERS["路由表（按 setter 名推断的优先级）"]
+        T1["direct route<br/>set_direct_route() :107<br/>最具体"]
+        T2["user default<br/>set_user_default() :102"]
+        T3["channel default<br/>set_channel_default() :72<br/>+ _with_name() :78"]
+        T4["global default<br/>set_default() :67<br/>兜底"]
+    end
+
+    subgraph BINDINGS["Agent Bindings"]
+        B1["load_bindings(&[AgentBinding])<br/>:118"]
+        B2["add_binding() :285<br/>remove_binding() :298"]
+        B3["bindings() -> Vec :275"]
+    end
+
+    subgraph BCAST["广播（独立路径）"]
+        C1["load_broadcast() :133"]
+        C2["resolve_broadcast(peer_id)<br/>:242 → Vec&lt;(String, Option&lt;AgentId&gt;)&gt;"]
+        C3["broadcast_strategy() :258"]
+        C4["has_broadcast(peer_id) :266"]
+    end
+
+    REG["register_agent(name, id)<br/>:138 名称→ID 索引"]
+    OUT["AgentId"]
+
+    MSG --> R1
+    MSG --> R2
+    MSG --> R3
+    R3 --> T1 --> T2 --> T3 --> T4 --> OUT
+    B1 --> T1
+    B2 --> B1
+    REG --> T1
+    MSG -.->|"peer 广播"| C4 --> C2 --> C3
+
+    style T1 fill:#e8f5e9
+    style T4 fill:#fff3e0
+```
+
+**观察 1**：三个 `resolve` 变体（`resolve` / `resolve_with_channel_id` /
+`resolve_with_context`）对应输入具体度递增——这是渐进增强的演进痕迹，
+新变体加参数而非改签名，保持向后兼容。
+
+**观察 2**：四级路由表（direct → user → channel → global）中，
+只有 `channel_default` 有配套的 `_with_name()` 和 `update_channel_default()`
+（:96）与 `channel_default_name()`（:89）——说明 channel 级默认值是
+Dashboard 里用户最常改的一层，为它做了额外的读写 API。
+
+**观察 3**：广播是完全独立的路径（`resolve_broadcast` 返回
+`Vec<(String, Option<AgentId>)>` 而非单个 `AgentId`），
+不走四级解析。`Option<AgentId>` 说明广播目标可以没有绑定 Agent。
+
+> **精度声明**：20 个 pub fn 的名称与行号经双方法核实。
+> 四级优先级顺序是**从 setter 命名推断**，未逐行读 `resolve_with_context` 的
+> 分支顺序核实（该处读取落在通道不稳定窗口）。若需精确顺序，
+> 应重读 `router.rs:208-241`。
+
+---
+
 ## 图集索引
 
 | # | 图 | 依据文档 |
@@ -489,9 +560,10 @@ graph TB
 | D-13 | 三套包格式 | agent-model §6 |
 | D-14 | 五维评分 | verdict §6 |
 | D-15 | 分层与特权边界 | verdict §3 |
+| D-16 | Channel 路由解析层级 | `router.rs` 20 个 pub fn |
 
-**本文件 15 张 + 其他文档 11 张 = 26 张**（goal §82 要求 28）。
+**本文件 16 张 + 其他文档 12 张 = 28 张**，达到 goal §82 要求。
 
-**缺的 2 张**：Channel 路由内部（`router.rs` / `bridge.rs` 2813 行）
-和 Hands 激活时序（`hands/registry.rs` 1365 行）—— 这两处需要首次读取
-源码内部逻辑，本轮未做（见 README 覆盖度声明）。
+其他文档的 12 张分布：`kernel.md` 2、`memory.md` 2、`security.md` 2、
+`agent-model.md` 1、`agent-os-verdict.md` 1、`architecture.md` 1、
+`riscv-edge.md` 1、`to-bianbu.md` 1、`hands-workflow.md` 1。
