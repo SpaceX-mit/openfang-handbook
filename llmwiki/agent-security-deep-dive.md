@@ -410,10 +410,10 @@ pub fn hash_manifest(toml_content: &str) -> String {
 | S2.1 | 直接提示注入防护 | OWASP LLM01 | `phantom_action_detected` 幽灵动作检测，taint UserInput 标签 | ⚠️ 部分 | 无系统性 prompt injection 扫描，仅检测副作用缺失 |
 | S2.2 | 间接提示注入防护 | OWASP LLM01 | taint 框架存在，但标签在检查点**硬编码构造**，`merge_taint`/`declassify` 生产零调用 | ⚠️ 部分 | 无真实污点传播：web_fetch 结果不带标签即进入上下文。见 [prompt-injection.md](prompt-injection.md) Gap-1 |
 | S2.3 | 恶意指令检测（技能内容） | OWASP LLM05 | `verify.rs::scan_prompt_content` 已接线 4 处，Critical 级**删目录 + SecurityBlocked 阻断安装** | ✅ 已达成 | 针对 ClawHub 341 个恶意技能事件（2026-02）的响应 |
-| S3.1 | 工具调用白名单/黑名单 | OWASP LLM08 | deny-wins + glob + 命名组，deny 优先于 allow | ✅ 已达成 | — |
-| S3.2 | 危险工具人工审批 | OWASP LLM08 | `ApprovalManager`，oneshot channel 阻塞等待，超时自动拒绝 | ✅ 已达成 | — |
-| S3.3 | 子 Agent 工具限制（深度感知） | OWASP LLM08 | `filter_tools_by_depth`，SUBAGENT_DENY_ALWAYS 列表 | ✅ 已达成 | — |
-| S3.4 | 工具并发数量限制 | OWASP LLM08 | `subagent_max_concurrent = 5`，`subagent_max_depth = 10` | ✅ 已达成 | — |
+| S3.1 | 工具调用白名单/黑名单 | OWASP LLM08 | `tool_policy.rs` 有 deny-wins + glob + 命名组，但**零调用点（死代码）**；实际生效的是 manifest 工具列表预过滤，且 `tools` 为空时 **fail-open** | ❌ Gap | 策略配置无效；空配置得到全部 53 工具 |
+| S3.2 | 危险工具人工审批 | OWASP LLM08 | `ApprovalManager`，oneshot channel 阻塞等待，超时自动拒绝，per-agent 待审上限 5 | ✅ 已达成 | — |
+| S3.3 | 子 Agent 工具限制（深度感知） | OWASP LLM08 | `filter_tools_by_depth` + `SUBAGENT_DENY_ALWAYS` 列表**零调用（死代码）** | ❌ Gap | 子 Agent 可调 `cron_create`/`hand_activate`/`process_start` |
+| S3.4 | 工具并发数量限制 | OWASP LLM08 | `subagent_max_concurrent`/`subagent_max_depth` 配置项随 `tool_policy.rs` 一同失效；仅 `tool_runner.rs:20` 硬编码 `MAX_AGENT_CALL_DEPTH = 5` 生效 | ⚠️ 部分 | 配置不可调，只有硬编码深度上限 |
 | S4.1 | Secret 不泄露到 LLM | OWASP LLM06 | taint Secret 标签 + `net_fetch` sink 阻断 | ✅ 已达成 | — |
 | S4.2 | LLM 输出中 Secret 扫描 | OWASP LLM06 | **无实现** | ❌ Gap | LLM 可能在回复中输出 API key，无正则扫描检测 |
 | S4.3 | Shell 命令注入防护 | OWASP LLM02 | `contains_shell_metacharacters` + taint 双重检查 | ✅ 已达成 | — |
@@ -535,20 +535,33 @@ fn redact_secrets(text: String) -> String {
 |------|--------|---------|--------|--------|--------|
 | S1. 访问控制 | 4 | 3 | 1 | 0 | 87.5% |
 | S2. 提示注入防护 | 3 | 1 | 2 | 0 | 50% |
-| S3. 工具执行控制 | 4 | 4 | 0 | 0 | 100% |
+| S3. 工具执行控制 | 4 | 1 | 1 | 2 | 37.5% |
 | S4. 数据流安全 | 6 | 4 | 0 | 2 | 66.7% |
 | S5. 运行时隔离 | 5 | 3 | 2 | 0 | 70% |
 | S6. 审计可观测性 | 5 | 3 | 1 | 1 | 70% |
 | S7. 网络协议安全 | 5 | 4 | 0 | 1 | 80% |
 | S8. 供应链安全 | 4 | 2 | 1 | 1 | 62.5% |
 | S9. 高级防护 | 4 | 0 | 1 | 3 | 12.5% |
-| **总计** | **40** | **24** | **8** | **8** | **70.0%** |
+| **总计** | **40** | **21** | **9** | **10** | **63.8%** |
 
-**量化评价**：在40项行业安全要求中，OpenFang 完整达成 24 项（60%），部分达成 8 项（20%），有 8 个明确 Gap（20%）。
+**量化评价**：在40项行业安全要求中，OpenFang 完整达成 21 项（52.5%），部分达成 9 项（22.5%），有 10 个明确 Gap（25%）。
 
-> **修订记录（2026-08-07）**：初版将 S4.6（Shell Bleed）评为 ⚠️ 部分达成，依据是函数文档注释里的 "warnings are prepended to the tool result"。后续在 [prompt-injection.md](prompt-injection.md) 中逐一核实调用点，发现 `scan_script_for_shell_bleed()` 在整个代码库中零调用（仅有模块声明和自身单元测试），实为死代码，故下调为 ❌ Gap。S4 完成度由 75% 修正为 66.7%，总计由 71.3% 修正为 70.0%。
+> **修订记录 1（2026-08-07）**：初版将 S4.6（Shell Bleed）评为 ⚠️ 部分达成，依据是函数文档注释里的 "warnings are prepended to the tool result"。后续在 [prompt-injection.md](prompt-injection.md) 中逐一核实调用点，发现 `scan_script_for_shell_bleed()` 在整个代码库中零调用（仅有模块声明和自身单元测试），实为死代码，故下调为 ❌ Gap。S4 完成度由 75% 修正为 66.7%，总计由 71.3% 修正为 70.0%。
 >
-> 方法论教训：只读函数定义和文档注释会高估防护能力，必须 grep 实际调用点。
+> **修订记录 2（2026-08-07，Deepdive 全量审查后）**：S3 全类由 100% 下调至 37.5%。
+> 新发现两处死代码：`tool_policy.rs` 全模块（`resolve_tool_access` / `filter_tools_by_depth` 零调用，11 个单元测试全绿）
+> 和 `CapabilityManager::check()`（生产零调用）。S3.1 与 S3.3 由 ✅ 改 ❌，S3.4 由 ✅ 改 ⚠️。
+> 同时 S2.2 补注"污点标签在检查点硬编码，非传播"。
+> 总计由 70.0% 修正为 **63.8%**。完整证据链见
+> [../Deepdive/openfang-security.md](../Deepdive/openfang-security.md) §1-3。
+>
+> 累计发现 3 个"实现完整 + 单元测试通过 + 零调用点"的安全模块：
+> `shell_bleed.rs`、`tool_policy.rs`、`CapabilityManager::check()`。
+> （初稿列了第 4 个 WASM skill runtime，已更正：WASM **Skill** 未实现，
+> 但 WASM **Agent** 路径是活代码，有生产调用点和 fuel 耗尽集成测试。）
+>
+> **方法论教训：只读函数定义和文档注释会系统性高估防护能力，必须 grep 调用点。
+> 反方向同样成立 —— 只看一处 `NotAvailable` 就断定整条路径都死，也是错的。**
 
 ---
 

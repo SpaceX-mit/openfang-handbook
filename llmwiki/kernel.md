@@ -6,7 +6,7 @@
 crates/openfang-kernel/src/
 ├── kernel.rs        ← OpenFangKernel 主结构体 + KernelHandle 实现（9415行）
 ├── lib.rs           ← 模块导出
-├── registry.rs      ← AgentRegistry（SQLite，Agent 状态持久化）
+├── registry.rs      ← AgentRegistry（纯内存 DashMap×3，持久化在 MemorySubstrate 层）
 ├── scheduler.rs     ← AgentScheduler（触发自主 Agent 执行）
 ├── supervisor.rs    ← Supervisor（崩溃重启、心跳检测）
 ├── metering.rs      ← MeteringEngine（token/cost 计量）
@@ -127,9 +127,15 @@ Pending ──spawn()──→ Running ──kill()──→ Terminated
 
 ### AgentRegistry
 
-- 后端：SQLite（`~/.openfang/agents.db`）
-- 使用 DashMap 做内存缓存，SQLite 做持久化
+- **本体是纯内存**：三个 `DashMap`（`agents` / `name_index` / `tag_index`），
+  `registry.rs` 中**没有一行 SQLite**
+- 持久化在上一层，write-through 到 `MemorySubstrate`：
+  - 写：`kernel.memory.save_agent(&entry)` → `agents` 表（在 `memory.db`，不是独立的 `agents.db`）
+  - 读：boot 时 `kernel.memory.load_all_agents()`（kernel.rs:1261）
+  - ⚠️ 8 处 `save_agent` 调用中 6 处用 `let _ =` 丢弃错误，写穿失败会导致内存与 DB 静默分叉
 - 每个 Agent 有：`AgentId`(UUID)、`AgentManifest`(TOML)、`AgentState`、`last_active`
+
+> 深入分析见 [../Deepdive/openfang-kernel.md](../Deepdive/openfang-kernel.md) §7.3
 
 ### 心跳与崩溃检测
 

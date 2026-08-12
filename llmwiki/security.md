@@ -15,9 +15,31 @@ OpenFang 实现了4层安全防护：
 
 ## 1. 能力系统（capability.rs）
 
-### 核心原则
+### 核心原则（设计意图）
 
-Agent 只能执行被**显式授权**的操作。没有能力声明 = 操作被拒绝。
+设计上：Agent 只能执行被**显式授权**的操作。没有能力声明 = 操作被拒绝。
+
+> ### ⚠️ 实现现实与设计意图不符
+>
+> 源码核实（2026-08-07）：**`CapabilityManager::check()` 在生产代码中零调用**，
+> 只有 `capabilities.rs` 自身的 2 个单元测试调用它。
+>
+> - `grant()` ✅ 被调用（kernel.rs:1372、1719）
+> - `list()` ✅ 被调用（kernel.rs:6193，仅用于查 `ToolAll`）
+> - `revoke_all()` ✅ 被调用（kernel.rs:3724）
+> - **`check()` ❌ 零调用**
+>
+> 后果：本节列出的 `FileRead`/`FileWrite`/`NetConnect`/`MemoryWrite`/`ShellExec`
+> 等 glob 限制**运行时不生效**。唯一真实的能力强制是
+> `spawn_agent_checked` 的父子继承校验。
+>
+> 真正限制工具的是 manifest 工具列表**预过滤**（`available_tools_with_registry`），
+> 且 `capabilities.tools` 为空时 **fail-open 放行全部 53 个内置工具**。
+>
+> 完整分析、强制链路图与修复方案见
+> [../Deepdive/openfang-security.md](../Deepdive/openfang-security.md) §1-2。
+>
+> 以下枚举内容仍然准确 —— 它描述的是**声明能力**，不是强制能力。
 
 ### Capability 完整枚举
 
